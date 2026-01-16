@@ -23,6 +23,35 @@ Your local Git repository has been initialized and your first commit is ready!
 
    Replace `YOUR_USERNAME` with your GitHub username.
 
+3. **Authenticate with GitHub:**
+   
+   **Option A: Personal Access Token (Recommended)**
+   - Go to https://github.com/settings/tokens
+   - Click "Generate new token" → "Generate new token (classic)"
+   - Give it a name (e.g., "AI Forensics Repo")
+   - Select scopes: `repo` (full control of private repositories)
+   - Click "Generate token"
+   - Copy the token (you won't see it again!)
+   - When pushing, use the token as your password:
+     ```bash
+     git push -u origin main
+     # Username: your_github_username
+     # Password: paste_your_token_here
+     ```
+   
+   **Option B: SSH Key (More Secure)**
+   - Generate SSH key: `ssh-keygen -t ed25519 -C "your_email@example.com"`
+   - Add to ssh-agent: `eval "$(ssh-agent -s)"` then `ssh-add ~/.ssh/id_ed25519`
+   - Copy public key: `cat ~/.ssh/id_ed25519.pub`
+   - Add to GitHub: https://github.com/settings/keys → "New SSH key"
+   - Change remote to SSH: `git remote set-url origin git@github.com:YOUR_USERNAME/ai-orchestrated-forensics.git`
+   - Push: `git push -u origin main`
+   
+   **Option C: GitHub CLI (Easiest)**
+   - Install: `brew install gh` (macOS) or see https://cli.github.com/
+   - Authenticate: `gh auth login`
+   - Push: `git push -u origin main`
+
 ### Option 2: GitLab
 
 1. **Create a new project on GitLab:**
