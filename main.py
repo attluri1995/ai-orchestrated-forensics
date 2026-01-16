@@ -10,6 +10,9 @@ from src.csv_ingestion import CSVIngester
 from src.data_processor import DataProcessor
 from src.ai_analyzer import AIAnalyzer
 from src.reporter import Reporter
+from src.case_input import CaseInput
+from src.osint_intelligence import OSINTIntelligence
+from src.focused_search import FocusedSearcher
 
 app = typer.Typer(help="AI Orchestrated Forensics - Automated threat detection from forensic tool CSVs")
 console = Console()
@@ -35,6 +38,12 @@ def analyze(
     ))
     console.print()
     
+    # Step 0: Collect case information
+    console.print("[bold]Step 0: Collecting case information...[/bold]")
+    case_input = CaseInput()
+    case_info = case_input.collect_case_info()
+    case_input.display_summary()
+    
     # Step 1: Ingest CSV files
     console.print("[bold]Step 1: Ingesting CSV files...[/bold]")
     ingester = CSVIngester(csv_directory)
@@ -56,21 +65,61 @@ def analyze(
     processed_data = processor.process_all()
     anomalies = processor.get_anomalies()
     
-    # Step 3: AI Analysis
-    console.print("[bold]Step 3: AI Analysis...[/bold]")
-    analyzer = AIAnalyzer(use_local_llm=use_local_llm, model_name=model_name)
-    analysis_results = analyzer.analyze_all(processed_data)
+    # Step 3: Get OSINT intelligence
+    all_iocs = case_info.get('known_iocs', [])
+    ttps = []
     
-    # Step 4: Generate reports
-    console.print("[bold]Step 4: Generating reports...[/bold]")
+    if case_info.get('threat_actor_group'):
+        console.print("[bold]Step 3: Retrieving OSINT intelligence...[/bold]")
+        osint = OSINTIntelligence(use_local_llm=use_local_llm, model_name=model_name)
+        intelligence = osint.get_threat_actor_intelligence(case_info['threat_actor_group'])
+        
+        if intelligence:
+            # Get OSINT IOCs
+            osint_iocs = osint.get_all_iocs(intelligence)
+            all_iocs = osint.combine_iocs(case_info.get('known_iocs', []), osint_iocs)
+            
+            # Get TTPs
+            ttps = osint.get_all_ttps(intelligence)
+            
+            console.print(f"[green]✓[/green] Combined {len(all_iocs)} total IOC(s) (user + OSINT)")
+            console.print()
+    else:
+        console.print("[bold]Step 3: Skipping OSINT (no threat actor group provided)...[/bold]\n")
+    
+    # Step 4: Focused search for IOCs
+    if all_iocs:
+        console.print("[bold]Step 4: Focused IOC search...[/bold]")
+        searcher = FocusedSearcher(processed_data, case_info, all_iocs)
+        search_results = searcher.search_all()
+        searcher.display_matches_table()
+    else:
+        console.print("[bold]Step 4: Skipping IOC search (no IOCs provided)...[/bold]\n")
+        searcher = None
+    
+    # Step 5: AI Analysis
+    console.print("[bold]Step 5: AI Analysis...[/bold]")
+    analyzer = AIAnalyzer(use_local_llm=use_local_llm, model_name=model_name)
+    analysis_results = analyzer.analyze_all(
+        processed_data, 
+        case_info=case_info, 
+        iocs=all_iocs if all_iocs else None,
+        ttps=ttps if ttps else None
+    )
+    
+    # Step 6: Generate reports
+    console.print("[bold]Step 6: Generating reports...[/bold]")
     reporter = Reporter(output_dir=output_dir)
     
     # Display summary
     reporter.display_analysis_summary(analysis_results, anomalies)
     
+    # Add search results to report if available
+    search_summary = searcher.get_matches_summary() if searcher else {}
+    
     # Generate reports
-    json_report = reporter.generate_json_report(analysis_results, anomalies)
-    text_report = reporter.generate_text_report(analysis_results, anomalies)
+    json_report = reporter.generate_json_report(analysis_results, anomalies, search_summary=search_summary, case_info=case_info)
+    text_report = reporter.generate_text_report(analysis_results, anomalies, search_summary=search_summary, case_info=case_info)
     
     console.print("\n[bold green]Analysis complete![/bold green]")
     console.print(f"  JSON Report: {json_report}")

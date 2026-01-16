@@ -46,7 +46,10 @@ class AIAnalyzer:
                     console.print(f"[yellow]OpenAI setup failed: {e}[/yellow]")
                     self.use_local_llm = True
     
-    def _analyze_with_llm(self, data_summary: str, sample_data: str, source_name: str) -> Dict[str, Any]:
+    def _analyze_with_llm(self, data_summary: str, sample_data: str, source_name: str, 
+                          case_info: Optional[Dict[str, Any]] = None, 
+                          iocs: Optional[List[str]] = None,
+                          ttps: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """
         Analyze data using LLM
         
@@ -58,7 +61,32 @@ class AIAnalyzer:
         Returns:
             Analysis results
         """
+        # Build context-aware prompt
+        context_parts = []
+        
+        if case_info:
+            case_type = case_info.get('case_type', 'Unknown')
+            threat_actor = case_info.get('threat_actor_group')
+            context_parts.append(f"Case Type: {case_type}")
+            if threat_actor:
+                context_parts.append(f"Threat Actor Group: {threat_actor}")
+        
+        if iocs:
+            context_parts.append(f"Known IOCs to search for: {', '.join(iocs[:20])}")
+            if len(iocs) > 20:
+                context_parts.append(f"... and {len(iocs) - 20} more IOCs")
+        
+        if ttps:
+            context_parts.append(f"Known TTPs: {len(ttps)} TTP(s) associated with threat actor")
+            for ttp in ttps[:5]:
+                context_parts.append(f"  - {ttp.get('technique', 'Unknown')}: {ttp.get('description', '')}")
+        
+        context_str = "\n".join(context_parts) if context_parts else "No specific case context provided."
+        
         prompt = f"""You are a cybersecurity forensic analyst. Analyze the following forensic data and identify any suspicious, malicious, or anomalous activities.
+
+Case Context:
+{context_str}
 
 Data Source: {source_name}
 
@@ -68,12 +96,14 @@ Data Summary:
 Sample Data (first 20 rows):
 {sample_data}
 
-Please analyze this data and identify:
-1. Any suspicious files, processes, or network activities
-2. Potential malware indicators
-3. Unusual patterns or anomalies
-4. Security threats or compromises
-5. Any other indicators of compromise (IOCs)
+Please analyze this data with focus on:
+1. Indicators matching the provided IOCs
+2. Activities consistent with the case type ({case_info.get('case_type', 'general') if case_info else 'general'})
+3. TTPs associated with the threat actor group
+4. Any suspicious files, processes, or network activities
+5. Potential malware indicators
+6. Unusual patterns or anomalies
+7. Security threats or compromises
 
 Provide your analysis in JSON format with the following structure:
 {{
@@ -145,7 +175,10 @@ Provide your analysis in JSON format with the following structure:
             "confidence": "low"
         }
     
-    def analyze_dataframe(self, df: pd.DataFrame, source_name: str) -> Dict[str, Any]:
+    def analyze_dataframe(self, df: pd.DataFrame, source_name: str, 
+                         case_info: Optional[Dict[str, Any]] = None,
+                         iocs: Optional[List[str]] = None,
+                         ttps: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
         """
         Analyze a single dataframe
         
@@ -170,7 +203,8 @@ Column names: {', '.join(df.columns.tolist())}
         sample_data = sample_df.to_string(max_rows=20, max_cols=10)
         
         # Analyze with AI
-        analysis = self._analyze_with_llm(data_summary, sample_data, source_name)
+        analysis = self._analyze_with_llm(data_summary, sample_data, source_name, 
+                                         case_info=case_info, iocs=iocs, ttps=ttps)
         analysis['source'] = source_name
         
         self.analysis_results.append(analysis)
@@ -183,20 +217,34 @@ Column names: {', '.join(df.columns.tolist())}
         
         return analysis
     
-    def analyze_all(self, processed_data: Dict[str, pd.DataFrame]) -> List[Dict[str, Any]]:
+    def analyze_all(self, processed_data: Dict[str, pd.DataFrame],
+                   case_info: Optional[Dict[str, Any]] = None,
+                   iocs: Optional[List[str]] = None,
+                   ttps: Optional[List[Dict[str, str]]] = None) -> List[Dict[str, Any]]:
         """
         Analyze all processed dataframes
         
         Args:
             processed_data: Dictionary of processed dataframes
+            case_info: Case information dictionary
+            iocs: List of IOCs to focus on
+            ttps: List of TTPs to look for
             
         Returns:
             List of analysis results
         """
         console.print("\n[bold cyan]Starting AI Analysis...[/bold cyan]\n")
         
+        if case_info:
+            console.print(f"Case Type: [cyan]{case_info.get('case_type', 'Unknown')}[/cyan]")
+        if iocs:
+            console.print(f"Focusing on: [yellow]{len(iocs)} IOC(s)[/yellow]")
+        if ttps:
+            console.print(f"Known TTPs: [yellow]{len(ttps)} TTP(s)[/yellow]")
+        console.print()
+        
         for name, df in processed_data.items():
-            self.analyze_dataframe(df, name)
+            self.analyze_dataframe(df, name, case_info=case_info, iocs=iocs, ttps=ttps)
         
         console.print(f"\n[green]Analysis complete for {len(self.analysis_results)} data source(s)[/green]\n")
         return self.analysis_results

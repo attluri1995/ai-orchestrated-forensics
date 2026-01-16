@@ -4,11 +4,14 @@ An intelligent forensic analysis system that processes CSV files from multiple f
 
 ## Features
 
+- **Interactive Case Input**: Collects case type (Ransomware, BEC, Intrusion, Other), threat actor group, and known IOCs
+- **OSINT Intelligence Integration**: Automatically retrieves TTPs and IOCs for threat actor groups from OSINT sources
+- **Focused IOC Search**: Searches all CSV files for provided IOCs (IPs, domains, hashes, executables, accounts, etc.)
 - **Multi-Source CSV Ingestion**: Automatically discovers and loads CSV files from various forensic tools
 - **Data Normalization**: Standardizes data from different sources for consistent analysis
 - **Pattern-Based Detection**: Identifies suspicious patterns using heuristics (file extensions, paths, keywords, etc.)
-- **AI-Powered Analysis**: Uses local LLMs (via Ollama) or OpenAI to perform deep analysis and threat detection
-- **Comprehensive Reporting**: Generates both JSON and human-readable text reports
+- **Context-Aware AI Analysis**: Uses case context, IOCs, and TTPs to perform focused threat detection
+- **Comprehensive Reporting**: Generates both JSON and human-readable text reports with case information
 
 ## Installation
 
@@ -53,6 +56,13 @@ Place your CSV files from forensic tools in a directory, then run:
 python main.py analyze ./path/to/csv/files
 ```
 
+The script will interactively prompt you for:
+1. **Case Type**: Select from Ransomware, BEC, Intrusion, or Other
+2. **Threat Actor Group**: (Optional) Enter the threat actor group name
+3. **Known IOCs**: Paste your known IOCs (IP addresses, domains, hashes, executables, compromised accounts, etc.)
+   - You can paste multiple IOCs separated by commas, semicolons, or newlines
+   - Example: `192.168.1.100,malicious.exe,evil.com,user@compromised.com`
+
 ### Using Local LLM (Default)
 
 ```bash
@@ -80,15 +90,20 @@ python main.py list-models
 
 ## How It Works
 
-1. **CSV Ingestion**: Scans the specified directory for CSV files and loads them
-2. **Data Processing**: Normalizes column names and detects obvious suspicious patterns
-3. **AI Analysis**: Uses AI to perform deep analysis of the data, identifying:
+1. **Case Information Collection**: Interactively collects case type, threat actor group, and known IOCs
+2. **CSV Ingestion**: Scans the specified directory for CSV files and loads them
+3. **Data Processing**: Normalizes column names and detects obvious suspicious patterns
+4. **OSINT Intelligence**: If a threat actor group is provided, retrieves TTPs and IOCs from OSINT sources
+5. **Focused IOC Search**: Searches all CSV files for matches with provided and OSINT IOCs
+6. **Context-Aware AI Analysis**: Uses AI with case context, IOCs, and TTPs to perform focused analysis, identifying:
+   - Matches with known IOCs
+   - Activities consistent with the case type
+   - TTPs associated with the threat actor group
    - Suspicious files and processes
    - Potential malware indicators
    - Unusual patterns and anomalies
    - Security threats and compromises
-   - Indicators of Compromise (IOCs)
-4. **Reporting**: Generates comprehensive reports in JSON and text formats
+7. **Reporting**: Generates comprehensive reports in JSON and text formats with case information and IOC matches
 
 ## Output
 
@@ -134,10 +149,14 @@ AI Orchestrated Forensics/
 ├── README.md              # This file
 ├── src/
 │   ├── __init__.py
+│   ├── case_input.py      # Interactive case information collection
 │   ├── csv_ingestion.py   # CSV loading module
 │   ├── data_processor.py  # Data processing and pattern detection
+│   ├── osint_intelligence.py  # OSINT threat intelligence retrieval
+│   ├── focused_search.py  # IOC-focused search module
 │   ├── ai_analyzer.py     # AI analysis engine
 │   └── reporter.py        # Report generation
+├── sample_data/           # Sample CSV files for testing
 └── reports/               # Generated reports (created automatically)
 ```
 

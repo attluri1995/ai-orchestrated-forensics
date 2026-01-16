@@ -1,7 +1,7 @@
 """Reporting Module - Generates reports of findings"""
 
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
@@ -108,7 +108,9 @@ class Reporter:
     
     def generate_json_report(self, analysis_results: List[Dict[str, Any]], 
                            anomalies: List[Dict[str, Any]], 
-                           filename: str = None) -> Path:
+                           filename: str = None,
+                           search_summary: Optional[Dict[str, Any]] = None,
+                           case_info: Optional[Dict[str, Any]] = None) -> Path:
         """Generate JSON report"""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -118,12 +120,15 @@ class Reporter:
         
         report = {
             'timestamp': datetime.now().isoformat(),
+            'case_info': case_info or {},
             'summary': {
                 'total_sources_analyzed': len(analysis_results),
                 'total_threats': sum(len(a.get('threats', [])) for a in analysis_results),
-                'total_anomalies': len(anomalies)
+                'total_anomalies': len(anomalies),
+                'total_ioc_matches': search_summary.get('total_matches', 0) if search_summary else 0
             },
             'pattern_based_anomalies': anomalies,
+            'ioc_search_results': search_summary or {},
             'ai_analysis_results': analysis_results,
             'all_threats': []
         }
@@ -144,7 +149,9 @@ class Reporter:
     
     def generate_text_report(self, analysis_results: List[Dict[str, Any]], 
                            anomalies: List[Dict[str, Any]], 
-                           filename: str = None) -> Path:
+                           filename: str = None,
+                           search_summary: Optional[Dict[str, Any]] = None,
+                           case_info: Optional[Dict[str, Any]] = None) -> Path:
         """Generate human-readable text report"""
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -159,14 +166,41 @@ class Reporter:
         lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         lines.append("")
         
+        # Case Information
+        if case_info:
+            lines.append("CASE INFORMATION")
+            lines.append("-" * 80)
+            lines.append(f"Case Type: {case_info.get('case_type', 'Unknown')}")
+            if case_info.get('threat_actor_group'):
+                lines.append(f"Threat Actor Group: {case_info.get('threat_actor_group')}")
+            if case_info.get('known_iocs'):
+                lines.append(f"Known IOCs Provided: {len(case_info.get('known_iocs', []))}")
+            lines.append("")
+        
         # Summary
         total_threats = sum(len(a.get('threats', [])) for a in analysis_results)
         lines.append("SUMMARY")
         lines.append("-" * 80)
         lines.append(f"Sources Analyzed: {len(analysis_results)}")
         lines.append(f"Pattern-based Anomalies: {len(anomalies)}")
+        lines.append(f"IOC Matches: {search_summary.get('total_matches', 0) if search_summary else 0}")
         lines.append(f"AI-Detected Threats: {total_threats}")
         lines.append("")
+        
+        # IOC Search Results
+        if search_summary and search_summary.get('total_matches', 0) > 0:
+            lines.append("IOC SEARCH RESULTS")
+            lines.append("-" * 80)
+            lines.append(f"Total Matches: {search_summary.get('total_matches', 0)}")
+            if search_summary.get('matches_by_source'):
+                lines.append("\nMatches by Source:")
+                for source, count in search_summary['matches_by_source'].items():
+                    lines.append(f"  {source}: {count}")
+            if search_summary.get('matches_by_ioc_type'):
+                lines.append("\nMatches by IOC Type:")
+                for ioc_type, count in search_summary['matches_by_ioc_type'].items():
+                    lines.append(f"  {ioc_type}: {count}")
+            lines.append("")
         
         # Pattern-based anomalies
         if anomalies:
