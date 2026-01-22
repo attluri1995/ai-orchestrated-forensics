@@ -1,48 +1,49 @@
-"""OSINT Intelligence Module - Retrieves threat actor TTPs and IOCs from OSINT sources"""
+"""OSINT Intelligence Module - Retrieves threat actor TTPs and IOCs from OSINT sources using Gemini"""
 
 from typing import Dict, List, Optional, Any
 from rich.console import Console
 import json
 import re
+import os
 
 console = Console()
 
 
 class OSINTIntelligence:
-    """Retrieves threat intelligence from OSINT sources"""
+    """Retrieves threat intelligence from OSINT sources using Google Gemini"""
     
-    def __init__(self, use_local_llm: bool = True, model_name: str = "llama3.2"):
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-pro"):
         """
-        Initialize OSINT intelligence gatherer
+        Initialize OSINT intelligence gatherer with Gemini
         
         Args:
-            use_local_llm: Whether to use local LLM for OSINT research
-            model_name: Model name for local LLM
+            api_key: Google Gemini API key (or from GEMINI_API_KEY env var)
+            model_name: Gemini model name (default: gemini-pro)
         """
-        self.use_local_llm = use_local_llm
         self.model_name = model_name
         self.intelligence_cache = {}
+        self.gemini_client = None
         
-        # Initialize LLM if available
-        if use_local_llm:
+        # Get API key from parameter or environment
+        if api_key:
+            self.api_key = api_key
+        else:
+            self.api_key = os.getenv('GEMINI_API_KEY')
+        
+        if not self.api_key:
+            console.print("[yellow]Warning: GEMINI_API_KEY not found. OSINT research will be limited.[/yellow]")
+            self.llm_available = False
+        else:
             try:
-                import ollama
-                self.ollama_client = ollama
+                import google.generativeai as genai
+                genai.configure(api_key=self.api_key)
+                self.gemini_client = genai.GenerativeModel(model_name)
                 self.llm_available = True
             except ImportError:
+                console.print("[red]Error: google-generativeai not installed[/red]")
                 self.llm_available = False
-                console.print("[yellow]Ollama not available for OSINT research[/yellow]")
-        else:
-            import os
-            api_key = os.getenv('OPENAI_API_KEY')
-            if api_key:
-                try:
-                    from openai import OpenAI
-                    self.openai_client = OpenAI(api_key=api_key)
-                    self.llm_available = True
-                except Exception:
-                    self.llm_available = False
-            else:
+            except Exception as e:
+                console.print(f"[yellow]Gemini setup failed: {e}[/yellow]")
                 self.llm_available = False
     
     def _query_llm_for_intelligence(self, threat_actor_group: str) -> Dict[str, Any]:
@@ -96,22 +97,19 @@ Provide your response in JSON format:
 }}"""
 
         try:
-            if self.use_local_llm:
-                response = self.ollama_client.generate(
-                    model=self.model_name,
-                    prompt=prompt
-                )
-                result_text = response['response']
-            else:
-                response = self.openai_client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a cybersecurity threat intelligence analyst. Always respond with valid JSON."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3
-                )
-                result_text = response.choices[0].message.content
+            if not self.gemini_client:
+                return {}
+            
+            # Use Gemini
+            response = self.gemini_client.generate_content(
+                prompt,
+                generation_config={
+                    "temperature": 0.3,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                }
+            )
+            result_text = response.text
             
             # Extract JSON
             json_start = result_text.find('{')

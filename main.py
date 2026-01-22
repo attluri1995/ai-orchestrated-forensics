@@ -6,13 +6,16 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
-from src.csv_ingestion import CSVIngester
+from src.csv_ingestion import FileIngester
 from src.data_processor import DataProcessor
 from src.ai_analyzer import AIAnalyzer
 from src.reporter import Reporter
 from src.case_input import CaseInput
 from src.osint_intelligence import OSINTIntelligence
 from src.focused_search import FocusedSearcher
+from src.timeline_generator import TimelineGenerator
+from rich.prompt import Prompt
+import os
 
 app = typer.Typer(help="AI Orchestrated Forensics - Automated threat detection from forensic tool CSVs")
 console = Console()
@@ -20,33 +23,38 @@ console = Console()
 
 @app.command()
 def analyze(
-    csv_directory: str = typer.Argument(..., help="Directory containing CSV files from forensic tools"),
-    use_local_llm: bool = typer.Option(True, "--local-llm/--openai", help="Use local LLM (Ollama) or OpenAI"),
-    model_name: str = typer.Option("llama3.2", help="Model name for local LLM"),
+    data_directory: str = typer.Argument(..., help="Directory containing forensic data files (CSV, XLSX, TXT)"),
+    gemini_api_key: str = typer.Option(None, "--api-key", help="Google Gemini API key (or set GEMINI_API_KEY env var)"),
+    model_name: str = typer.Option("gemini-pro", help="Gemini model name"),
     output_dir: str = typer.Option("reports", help="Directory to save reports")
 ):
     """
-    Analyze forensic CSV files and detect threats
+    Analyze forensic data files and detect threats
     
     Example:
-        python main.py analyze ./forensic_data --local-llm --model-name llama3.2
+        python main.py analyze ./forensic_data --api-key YOUR_API_KEY
     """
     console.print(Panel.fit(
         "[bold cyan]AI Orchestrated Forensics[/bold cyan]\n"
-        "Automated threat detection from forensic tool CSVs",
+        "Automated threat detection from forensic tool outputs",
         border_style="cyan"
     ))
     console.print()
     
-    # Step 0: Collect case information
-    console.print("[bold]Step 0: Collecting case information...[/bold]")
+    # Step 0: Get analyst name
+    console.print("[bold]Step 0: Analyst Information[/bold]")
+    analyst_name = Prompt.ask("Analyst Name", default="Unknown Analyst")
+    console.print(f"[green]✓[/green] Analyst: {analyst_name}\n")
+    
+    # Step 1: Collect case information
+    console.print("[bold]Step 1: Collecting case information...[/bold]")
     case_input = CaseInput()
     case_info = case_input.collect_case_info()
     case_input.display_summary()
     
-    # Step 1: Ingest CSV files
-    console.print("[bold]Step 1: Ingesting CSV files...[/bold]")
-    ingester = CSVIngester(csv_directory)
+    # Step 2: Ingest files (CSV, XLSX, TXT)
+    console.print("[bold]Step 2: Ingesting forensic data files...[/bold]")
+    ingester = FileIngester(data_directory)
     dataframes = ingester.ingest_all()
     
     if not dataframes:
@@ -59,19 +67,19 @@ def analyze(
         console.print(f"  [cyan]{name}[/cyan]: {info['rows']:,} rows, {info['columns']} columns")
     console.print()
     
-    # Step 2: Process data
-    console.print("[bold]Step 2: Processing data...[/bold]")
+    # Step 3: Process data
+    console.print("[bold]Step 3: Processing data...[/bold]")
     processor = DataProcessor(dataframes)
     processed_data = processor.process_all()
     anomalies = processor.get_anomalies()
     
-    # Step 3: Get OSINT intelligence
+    # Step 4: Get OSINT intelligence
     all_iocs = case_info.get('known_iocs', [])
     ttps = []
     
     if case_info.get('threat_actor_group'):
-        console.print("[bold]Step 3: Retrieving OSINT intelligence...[/bold]")
-        osint = OSINTIntelligence(use_local_llm=use_local_llm, model_name=model_name)
+        console.print("[bold]Step 4: Retrieving OSINT intelligence...[/bold]")
+        osint = OSINTIntelligence(api_key=gemini_api_key, model_name=model_name)
         intelligence = osint.get_threat_actor_intelligence(case_info['threat_actor_group'])
         
         if intelligence:
@@ -85,21 +93,21 @@ def analyze(
             console.print(f"[green]✓[/green] Combined {len(all_iocs)} total IOC(s) (user + OSINT)")
             console.print()
     else:
-        console.print("[bold]Step 3: Skipping OSINT (no threat actor group provided)...[/bold]\n")
+        console.print("[bold]Step 4: Skipping OSINT (no threat actor group provided)...[/bold]\n")
     
-    # Step 4: Focused search for IOCs
+    # Step 5: Focused search for IOCs
+    searcher = None
     if all_iocs:
-        console.print("[bold]Step 4: Focused IOC search...[/bold]")
+        console.print("[bold]Step 5: Focused IOC search...[/bold]")
         searcher = FocusedSearcher(processed_data, case_info, all_iocs)
         search_results = searcher.search_all()
         searcher.display_matches_table()
     else:
-        console.print("[bold]Step 4: Skipping IOC search (no IOCs provided)...[/bold]\n")
-        searcher = None
+        console.print("[bold]Step 5: Skipping IOC search (no IOCs provided)...[/bold]\n")
     
-    # Step 5: AI Analysis
-    console.print("[bold]Step 5: AI Analysis...[/bold]")
-    analyzer = AIAnalyzer(use_local_llm=use_local_llm, model_name=model_name)
+    # Step 6: AI Analysis
+    console.print("[bold]Step 6: AI Analysis with Gemini...[/bold]")
+    analyzer = AIAnalyzer(api_key=gemini_api_key, model_name=model_name)
     analysis_results = analyzer.analyze_all(
         processed_data, 
         case_info=case_info, 
@@ -107,8 +115,37 @@ def analyze(
         ttps=ttps if ttps else None
     )
     
-    # Step 6: Generate reports
-    console.print("[bold]Step 6: Generating reports...[/bold]")
+    # Step 7: Generate timeline CSV
+    console.print("[bold]Step 7: Generating timeline CSV...[/bold]")
+    timeline_gen = TimelineGenerator(analyst_name=analyst_name)
+    
+    # Add entries from IOC matches
+    if searcher:
+        for source_name, matches in searcher.search_results.items():
+            df = processed_data.get(source_name)
+            if df is not None:
+                for match in matches:
+                    timeline_gen.add_from_ioc_match(match, df, source_name)
+    
+    # Add entries from AI-detected threats
+    for analysis in analysis_results:
+        source_name = analysis.get('source', 'unknown')
+        df = processed_data.get(source_name)
+        for threat in analysis.get('threats', []):
+            timeline_gen.add_from_threat(threat, source_name, df)
+    
+    # Add entries from pattern-based anomalies
+    for anomaly in anomalies:
+        source_name = anomaly.get('source', 'unknown')
+        df = processed_data.get(source_name)
+        if df is not None:
+            timeline_gen.add_from_anomaly(anomaly, df, source_name)
+    
+    # Generate timeline CSV
+    timeline_csv = timeline_gen.generate_csv(Path(output_dir) / f"timeline_{case_info.get('case_type', 'analysis').lower()}.csv")
+    
+    # Step 8: Generate other reports
+    console.print("[bold]Step 8: Generating additional reports...[/bold]")
     reporter = Reporter(output_dir=output_dir)
     
     # Display summary
@@ -122,23 +159,32 @@ def analyze(
     text_report = reporter.generate_text_report(analysis_results, anomalies, search_summary=search_summary, case_info=case_info)
     
     console.print("\n[bold green]Analysis complete![/bold green]")
+    console.print(f"  [bold]Timeline CSV:[/bold] {timeline_csv}")
     console.print(f"  JSON Report: {json_report}")
     console.print(f"  Text Report: {text_report}")
 
 
 @app.command()
-def list_models():
-    """List available local LLM models (requires Ollama)"""
+def test_gemini(
+    api_key: str = typer.Option(None, "--api-key", help="Google Gemini API key (or set GEMINI_API_KEY env var)")
+):
+    """Test Gemini API connection"""
+    test_key = api_key or os.getenv('GEMINI_API_KEY')
+    if not test_key:
+        console.print("[red]Error: GEMINI_API_KEY not provided[/red]")
+        console.print("Set it as environment variable or pass --api-key")
+        raise typer.Exit(code=1)
+    
     try:
-        import ollama
-        models = ollama.list()
-        console.print("[bold]Available Local Models:[/bold]\n")
-        for model in models.get('models', []):
-            console.print(f"  • {model.get('name', 'unknown')}")
-    except ImportError:
-        console.print("[red]Ollama not installed. Install it from https://ollama.ai[/red]")
+        import google.generativeai as genai
+        genai.configure(api_key=test_key)
+        model = genai.GenerativeModel("gemini-pro")
+        response = model.generate_content("Say 'Hello' if you can read this.")
+        console.print(f"[green]✓ Gemini API connection successful![/green]")
+        console.print(f"Response: {response.text}")
     except Exception as e:
-        console.print(f"[red]Error listing models: {e}[/red]")
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

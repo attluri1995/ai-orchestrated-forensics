@@ -1,4 +1,4 @@
-"""AI Analysis Module - Uses AI to analyze forensic data and detect threats"""
+"""AI Analysis Module - Uses Gemini AI to analyze forensic data and detect threats"""
 
 import pandas as pd
 from typing import Dict, List, Any, Optional
@@ -11,40 +11,39 @@ console = Console()
 
 
 class AIAnalyzer:
-    """AI-powered analyzer for forensic data"""
+    """AI-powered analyzer for forensic data using Google Gemini"""
     
-    def __init__(self, use_local_llm: bool = True, model_name: str = "llama3.2"):
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-pro"):
         """
-        Initialize AI analyzer
+        Initialize AI analyzer with Gemini
         
         Args:
-            use_local_llm: Whether to use local LLM (Ollama) or OpenAI
-            model_name: Model name for local LLM
+            api_key: Google Gemini API key (or from GEMINI_API_KEY env var)
+            model_name: Gemini model name (default: gemini-pro)
         """
-        self.use_local_llm = use_local_llm
         self.model_name = model_name
         self.analysis_results = []
+        self.gemini_client = None
         
-        # Try to initialize LLM
-        if use_local_llm:
-            try:
-                import ollama
-                self.ollama_client = ollama
-                console.print(f"[green]✓[/green] Using local LLM: {model_name}")
-            except ImportError:
-                console.print("[yellow]Ollama not available, falling back to rule-based analysis[/yellow]")
-                self.use_local_llm = False
+        # Get API key from parameter or environment
+        if api_key:
+            self.api_key = api_key
         else:
-            # OpenAI setup
-            api_key = os.getenv('OPENAI_API_KEY')
-            if api_key:
-                try:
-                    from openai import OpenAI
-                    self.openai_client = OpenAI(api_key=api_key)
-                    console.print("[green]✓[/green] Using OpenAI API")
-                except Exception as e:
-                    console.print(f"[yellow]OpenAI setup failed: {e}[/yellow]")
-                    self.use_local_llm = True
+            self.api_key = os.getenv('GEMINI_API_KEY')
+        
+        if not self.api_key:
+            console.print("[yellow]Warning: GEMINI_API_KEY not found. AI analysis will be limited.[/yellow]")
+            console.print("[yellow]Set GEMINI_API_KEY environment variable or pass api_key parameter[/yellow]")
+        else:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=self.api_key)
+                self.gemini_client = genai.GenerativeModel(model_name)
+                console.print(f"[green]✓[/green] Using Gemini: {model_name}")
+            except ImportError:
+                console.print("[red]Error: google-generativeai not installed. Install with: pip install google-generativeai[/red]")
+            except Exception as e:
+                console.print(f"[yellow]Gemini setup failed: {e}[/yellow]")
     
     def _analyze_with_llm(self, data_summary: str, sample_data: str, source_name: str, 
                           case_info: Optional[Dict[str, Any]] = None, 
@@ -121,22 +120,20 @@ Provide your analysis in JSON format with the following structure:
 }}"""
 
         try:
-            if self.use_local_llm:
-                response = self.ollama_client.generate(
-                    model=self.model_name,
-                    prompt=prompt
-                )
-                result_text = response['response']
-            else:
-                response = self.openai_client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a cybersecurity forensic analyst. Always respond with valid JSON."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3
-                )
-                result_text = response.choices[0].message.content
+            if not self.gemini_client:
+                # Fallback to rule-based analysis
+                return self._rule_based_analysis(data_summary, sample_data, source_name)
+            
+            # Use Gemini
+            response = self.gemini_client.generate_content(
+                prompt,
+                generation_config={
+                    "temperature": 0.3,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                }
+            )
+            result_text = response.text
             
             # Try to extract JSON from response
             json_start = result_text.find('{')

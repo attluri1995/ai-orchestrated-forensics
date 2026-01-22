@@ -4,21 +4,23 @@ An intelligent forensic analysis system that processes CSV files from multiple f
 
 ## Features
 
-- **Interactive Case Input**: Collects case type (Ransomware, BEC, Intrusion, Other), threat actor group, and known IOCs
-- **OSINT Intelligence Integration**: Automatically retrieves TTPs and IOCs for threat actor groups from OSINT sources
-- **Focused IOC Search**: Searches all CSV files for provided IOCs (IPs, domains, hashes, executables, accounts, etc.)
-- **Multi-Source CSV Ingestion**: Automatically discovers and loads CSV files from various forensic tools
+- **Google Gemini AI Integration**: Uses Google Gemini for all AI-powered analysis and OSINT intelligence
+- **Multi-Format File Support**: Processes CSV, XLSX, and TXT files recursively from directories
+- **Interactive Case Input**: Collects analyst name, case type (Ransomware, BEC, Intrusion, Other), threat actor group, and known IOCs
+- **OSINT Intelligence Integration**: Automatically retrieves TTPs and IOCs for threat actor groups using Gemini
+- **Focused IOC Search**: Searches all files for provided IOCs (IPs, domains, hashes, executables, accounts, etc.)
+- **Timeline CSV Generation**: Creates chronological timeline CSV with all identified malicious/suspicious activities
 - **Data Normalization**: Standardizes data from different sources for consistent analysis
 - **Pattern-Based Detection**: Identifies suspicious patterns using heuristics (file extensions, paths, keywords, etc.)
 - **Context-Aware AI Analysis**: Uses case context, IOCs, and TTPs to perform focused threat detection
-- **Comprehensive Reporting**: Generates both JSON and human-readable text reports with case information
+- **Comprehensive Reporting**: Generates timeline CSV, JSON, and human-readable text reports
 
 ## Installation
 
 ### Prerequisites
 
 - Python 3.8 or higher
-- (Optional) Ollama for local LLM support - [Install Ollama](https://ollama.ai)
+- Google Gemini API key - [Get API Key](https://makersuite.google.com/app/apikey)
 
 ### Setup
 
@@ -32,70 +34,68 @@ cd "AI Orchestrated Forensics"
 pip install -r requirements.txt
 ```
 
-3. (Optional) Set up local LLM with Ollama:
+3. Set up Gemini API key:
 ```bash
-# Install Ollama from https://ollama.ai
-# Then pull a model:
-ollama pull llama3.2
-# or
-ollama pull mistral
-```
+# Option 1: Set as environment variable
+export GEMINI_API_KEY=your_api_key_here
 
-4. (Optional) For OpenAI support, create a `.env` file:
-```bash
-echo "OPENAI_API_KEY=your_api_key_here" > .env
+# Option 2: Create a .env file
+echo "GEMINI_API_KEY=your_api_key_here" > .env
 ```
 
 ## Usage
 
 ### Basic Usage
 
-Place your CSV files from forensic tools in a directory, then run:
+Place your forensic data files (CSV, XLSX, TXT) in a directory, then run:
 
 ```bash
-python main.py analyze ./path/to/csv/files
+python main.py analyze ./path/to/forensic_data
 ```
 
-The script will interactively prompt you for:
-1. **Case Type**: Select from Ransomware, BEC, Intrusion, or Other
-2. **Threat Actor Group**: (Optional) Enter the threat actor group name
-3. **Known IOCs**: Paste your known IOCs (IP addresses, domains, hashes, executables, compromised accounts, etc.)
+The script will:
+1. **Ask for Analyst Name**: Enter your name (used in timeline reports)
+2. **Case Type**: Select from Ransomware, BEC, Intrusion, or Other
+3. **Threat Actor Group**: (Optional) Enter the threat actor group name
+4. **Known IOCs**: Paste your known IOCs (IP addresses, domains, hashes, executables, compromised accounts, etc.)
    - You can paste multiple IOCs separated by commas, semicolons, or newlines
    - Example: `192.168.1.100,malicious.exe,evil.com,user@compromised.com`
 
-### Using Local LLM (Default)
+### With API Key
 
 ```bash
-python main.py analyze ./forensic_data --local-llm --model-name llama3.2
+python main.py analyze ./forensic_data --api-key YOUR_GEMINI_API_KEY
 ```
 
-### Using OpenAI
+### Test Gemini Connection
 
 ```bash
-python main.py analyze ./forensic_data --openai
-```
-
-### List Available Models
-
-```bash
-python main.py list-models
+python main.py test-gemini --api-key YOUR_GEMINI_API_KEY
 ```
 
 ### Options
 
-- `csv_directory`: Path to directory containing CSV files (required)
-- `--local-llm/--openai`: Choose between local LLM or OpenAI (default: local-llm)
-- `--model-name`: Model name for local LLM (default: llama3.2)
+- `data_directory`: Path to directory containing forensic data files (required)
+- `--api-key`: Google Gemini API key (optional if GEMINI_API_KEY env var is set)
+- `--model-name`: Gemini model name (default: gemini-pro)
 - `--output-dir`: Directory to save reports (default: reports)
+
+### Supported File Types
+
+The tool processes files recursively from the specified directory:
+- **CSV files** (`.csv`)
+- **Excel files** (`.xlsx`)
+- **Text files** (`.txt`) - automatically detects delimiters (comma, tab, pipe, semicolon)
 
 ## How It Works
 
-1. **Case Information Collection**: Interactively collects case type, threat actor group, and known IOCs
-2. **CSV Ingestion**: Scans the specified directory for CSV files and loads them
-3. **Data Processing**: Normalizes column names and detects obvious suspicious patterns
-4. **OSINT Intelligence**: If a threat actor group is provided, retrieves TTPs and IOCs from OSINT sources
-5. **Focused IOC Search**: Searches all CSV files for matches with provided and OSINT IOCs
-6. **Context-Aware AI Analysis**: Uses AI with case context, IOCs, and TTPs to perform focused analysis, identifying:
+1. **Analyst Information**: Collects analyst name for timeline attribution
+2. **Case Information Collection**: Interactively collects case type, threat actor group, and known IOCs
+3. **File Ingestion**: Recursively scans directory for CSV, XLSX, and TXT files and loads them
+4. **Data Processing**: Normalizes column names and detects obvious suspicious patterns
+5. **OSINT Intelligence**: If a threat actor group is provided, uses Gemini to retrieve TTPs and IOCs from OSINT sources
+6. **Focused IOC Search**: Searches all files for matches with provided and OSINT IOCs
+7. **Context-Aware AI Analysis**: Uses Google Gemini AI with case context, IOCs, and TTPs to perform focused analysis, identifying:
    - Matches with known IOCs
    - Activities consistent with the case type
    - TTPs associated with the threat actor group
@@ -103,25 +103,38 @@ python main.py list-models
    - Potential malware indicators
    - Unusual patterns and anomalies
    - Security threats and compromises
-7. **Reporting**: Generates comprehensive reports in JSON and text formats with case information and IOC matches
+8. **Timeline Generation**: Creates chronological CSV timeline with all identified activities
+9. **Reporting**: Generates comprehensive reports in JSON and text formats with case information and IOC matches
 
 ## Output
 
-The system generates two types of reports in the `reports/` directory:
+The system generates reports in the `reports/` directory:
 
-1. **JSON Report** (`forensic_report_YYYYMMDD_HHMMSS.json`): Machine-readable format with all findings
-2. **Text Report** (`forensic_report_YYYYMMDD_HHMMSS.txt`): Human-readable format with detailed analysis
+1. **Timeline CSV** (`timeline_<case_type>.csv`): **Primary output** - Chronological timeline of all identified activities with columns:
+   - **Timestamp**: Date/time of event (yyyy-mm-dd hh:mm:ss) or blank if unavailable
+   - **Device Name**: System name being analyzed
+   - **Account**: User account associated with malicious activity
+   - **Event**: Description of the event
+   - **Artifact**: Forensic artifact type (Amcache, Prefetch, Shimcache, Event Log, etc.)
+   - **Event ID**: Event ID if from event logs
+   - **Analyst**: Analyst name
+   - **Comments**: Additional context about why the event is suspicious/malicious
+   - **Level**: Malicious or Suspicious
+
+2. **JSON Report** (`forensic_report_YYYYMMDD_HHMMSS.json`): Machine-readable format with all findings
+3. **Text Report** (`forensic_report_YYYYMMDD_HHMMSS.txt`): Human-readable format with detailed analysis
 
 ## Supported Forensic Tools
 
-The system works with CSV files from any forensic tool, including:
+The system works with CSV, XLSX, and TXT files from any forensic tool, including:
 - Volatility memory dumps
 - Process monitors
 - Network traffic analyzers
 - File system scanners
 - Registry analyzers
-- Log analyzers
-- Any tool that exports to CSV
+- Event log analyzers (Windows Event Logs, Sysmon, etc.)
+- Amcache, Prefetch, Shimcache analyzers
+- Any tool that exports to CSV, XLSX, or delimited text files
 
 ## Example
 
@@ -150,13 +163,14 @@ AI Orchestrated Forensics/
 ├── src/
 │   ├── __init__.py
 │   ├── case_input.py      # Interactive case information collection
-│   ├── csv_ingestion.py   # CSV loading module
+│   ├── csv_ingestion.py   # File loading module (CSV, XLSX, TXT)
 │   ├── data_processor.py  # Data processing and pattern detection
-│   ├── osint_intelligence.py  # OSINT threat intelligence retrieval
+│   ├── osint_intelligence.py  # OSINT threat intelligence retrieval (Gemini)
 │   ├── focused_search.py  # IOC-focused search module
-│   ├── ai_analyzer.py     # AI analysis engine
+│   ├── ai_analyzer.py     # AI analysis engine (Gemini)
+│   ├── timeline_generator.py  # Timeline CSV generation
 │   └── reporter.py        # Report generation
-├── sample_data/           # Sample CSV files for testing
+├── sample_data/           # Sample files for testing
 └── reports/               # Generated reports (created automatically)
 ```
 
